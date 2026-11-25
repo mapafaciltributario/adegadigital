@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-// Cakto webhook. Validates X-Cakto-Signature (HMAC of "{ts}.{raw body}"), re-checks the
+// Cakto webhook. Validates the secret in the JSON payload, re-checks the
 // order status at Cakto, and is idempotent: it only logs ids/status and never grants access
 // itself — Cakto delivers the product to the buyer after the payment is "paid".
 const seen = new Set<string>(); // best-effort per-isolate dedupe; handler has no side effects to repeat
@@ -12,12 +12,16 @@ export const Route = createFileRoute("/api/public/cakto-webhook")({
         const secret = process.env["CAKTO_WEBHOOK_SECRET"];
         if (!secret) return new Response("not configured", { status: 503 });
         const raw = await request.text();
-        const { verifyCaktoSignature, getOrder } = await import("@/lib/cakto.server");
-        const ok = await verifyCaktoSignature(raw, request.headers.get("x-cakto-timestamp"), request.headers.get("x-cakto-signature"), secret);
-        if (!ok) return new Response("unauthorized", { status: 401 });
-
-        let payload: { event?: string; data?: unknown };
+        let payload: { secret?: unknown; event?: string; data?: unknown };
         try { payload = JSON.parse(raw); } catch { return new Response("bad json", { status: 400 }); }
+        if (!payload || typeof payload !== "object") return new Response("bad json", { status: 400 });
+        const { timingSafeEqual } = await import("node:crypto");
+        const supplied = typeof payload.secret === "string" ? Buffer.from(payload.secret) : Buffer.alloc(0);
+        const expected = Buffer.from(secret);
+        if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        const { getOrder } = await import("@/lib/cakto.server");
         const event = String(payload.event ?? "");
         const items = (Array.isArray(payload.data) ? payload.data : [payload.data]) as Array<{ id?: string; status?: string } | undefined>;
 
