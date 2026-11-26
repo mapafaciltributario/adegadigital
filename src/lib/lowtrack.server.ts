@@ -1,7 +1,7 @@
 import type { CaktoOrder } from "./cakto.server";
 
 export type WebhookOrder = {
-  id?: unknown; amount?: number | string; paymentMethod?: string;
+  id?: unknown; status?: string; amount?: number | string; paymentMethod?: string;
   product?: { name?: string }; customer?: { name?: string; email?: string; phone?: string };
   utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string; utm_term?: string;
   fbp?: string; fbc?: string;

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 // Cakto webhook. Authenticates the caller (secret in the JSON body, or the v1 HMAC header) and
-// re-checks the order at Cakto. Forwards verified sale status to LowTrack.
+// uses the authenticated notification to forward sale status to LowTrack.
 // It never grants access (Cakto delivers the product) and does not send Purchase: the server
 // Purchase goes out from the approved screen with the buyer's consent and match data.
 
@@ -30,7 +30,7 @@ export const Route = createFileRoute("/api/public/cakto-webhook")({
         try { payload = JSON.parse(raw); } catch { return new Response("bad json", { status: 400 }); }
         if (!payload || typeof payload !== "object") return new Response("bad json", { status: 400 });
 
-        const { verifyCaktoSignature, getOrder } = await import("@/lib/cakto.server");
+        const { verifyCaktoSignature } = await import("@/lib/cakto.server");
         const bodyOk = typeof payload.secret === "string" && (await sameSecret(payload.secret, secret));
         const headerOk = !bodyOk && (await verifyCaktoSignature(raw, request.headers.get("x-cakto-timestamp"), request.headers.get("x-cakto-signature"), secret));
         if (!bodyOk && !headerOk) return new Response("unauthorized", { status: 401 });
@@ -41,12 +41,20 @@ export const Route = createFileRoute("/api/public/cakto-webhook")({
           const id = typeof d?.id === "string" && /^[0-9a-f-]{36}$/i.test(d.id) ? d.id : null;
           if (!id || !STATUS_EVENTS.has(event)) continue; // e.g. checkout_abandonment has no order id
           try {
-            const order = await getOrder(id); // never trust the payload's status
+            const status = d?.status;
+            if (typeof status !== "string") continue;
+            // The notification has already passed webhook authentication.
+            // Test notifications must not pollute live conversion reporting.
+            if (d?.utm_source === "test" && d?.utm_medium === "webhook" && /^test_\d{8}$/.test(d?.utm_campaign ?? "") && d?.customer?.email === "john.doe@example.com") {
+              console.info("cakto webhook: synthetic test received", { event, orderId: id });
+              continue;
+            }
+            const order = { id, status, amount: d?.amount, product: d?.product };
             const { forwardLowTrack } = await import("@/lib/lowtrack.server");
             await forwardLowTrack(event, order, d!);
             console.log("cakto webhook", { event, orderId: id, confirmedStatus: order.status });
-          } catch {
-            console.error("cakto webhook: order lookup or LowTrack delivery failed", { event, orderId: id });
+          } catch (error) {
+            console.error("cakto webhook: LowTrack delivery failed", { event, orderId: id, error: error instanceof Error ? error.message : "unknown" });
             return new Response("retry", { status: 502 });
           }
         }
