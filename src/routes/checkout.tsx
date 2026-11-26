@@ -139,7 +139,7 @@ function Checkout() {
         return;
       }
       const payload = JSON.stringify({ plano, ...parsed.data });
-      const r = await createPix({ data: { plan: plano, customer: parsed.data, bumps: [], idempotencyKey: getIdemKey(payload), fingerprint: getFingerprint(), tracking: trackingPayload() } });
+      const r = await createPix({ data: { plan: plano, customer: parsed.data, bumps: [], idempotencyKey: getIdemKey(payload), fingerprint: getFingerprint(), tracking: trackingPayload(), utm: getUtm() } });
       if (!r.ok) { setError(r.error); return; }
       sessionStorage.setItem("checkout-plan", plano);
       track("AddPaymentInfo", { plan: plano, onceKey: r.orderId });

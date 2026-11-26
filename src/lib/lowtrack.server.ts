@@ -9,10 +9,10 @@ export type WebhookOrder = {
 
 export async function forwardLowTrack(event: string, order: CaktoOrder, data: WebhookOrder) {
   const status = order.status;
-  const sale = event === "pix_gerado" && status === "waiting_payment" ? "sale.pending"
+  const sale = event === "pix_gerado" && ["waiting_payment", "processing", "authorized", "partially_paid", "retrying", "scheduled"].includes(status) ? "sale.pending"
     : event === "purchase_approved" && status === "paid" ? "sale.approved"
     : ["refund", "chargeback"].includes(event) && ["refunded", "chargedback", "chargeback"].includes(status) ? "sale.refunded" : null;
-  if (!sale) return;
+  if (!sale) { console.warn("lowtrack: status skipped", { event, status }); return; }
   const token = process.env["LOWTRACK_API_TOKEN"]?.trim();
   if (!token) throw new Error("LOWTRACK_API_TOKEN missing");
   const rawAmount = order.amount ?? data.amount;
@@ -21,7 +21,7 @@ export async function forwardLowTrack(event: string, order: CaktoOrder, data: We
   const name = data.customer?.name?.trim();
   const [first, ...rest] = (name ?? "").split(/\s+/);
   const response = await fetch("https://lowtrack.com.br/api/webhook", {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    method: "POST", signal: AbortSignal.timeout(5000), headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ event: sale, transaction_id: order.id, amount, currency: "BRL",
       payment_method: data.paymentMethod ?? (event === "pix_gerado" ? "pix" : undefined),
       product: { name: (typeof order.product === "object" ? order.product?.name : undefined) ?? data.product?.name },
@@ -31,4 +31,5 @@ export async function forwardLowTrack(event: string, order: CaktoOrder, data: We
     })
   });
   if (!response.ok) throw new Error(`LowTrack HTTP ${response.status}`);
+  console.info("lowtrack: delivered", { event: sale, orderId: order.id, httpStatus: response.status });
 }

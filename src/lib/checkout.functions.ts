@@ -16,7 +16,7 @@ const trackingSchema = z.object({
 }).default({ consent: false });
 
 export const createPixCharge = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => pixRequestSchema.extend({ tracking: trackingSchema }).parse(d))
+  .inputValidator((d: unknown) => pixRequestSchema.extend({ tracking: trackingSchema, utm: z.partialRecord(z.enum(UTM_KEYS), z.string().max(200)).optional() }).parse(d))
   .handler(async ({ data }) => {
     const { getOffer, createPixPayment, CaktoError } = await import("./cakto.server");
     const offerId = process.env[PLANS[data.plan].envOffer];
@@ -51,6 +51,19 @@ export const createPixCharge = createServerFn({ method: "POST" })
         items: [{ offerId, quantity: 1, offerType: "main" }, ...bumpOffers.map((b) => ({ offerId: b.id, quantity: 1, offerType: "orderbump" }))],
         pixExpiresIn: 1800,
       }, data.idempotencyKey);
+      // A real Pix response is sufficient to report a pending order; never infer approval from a QR code.
+      if (mapOrderStatus(pay.status) === "pending" || (mapOrderStatus(pay.status) === "unknown" && pay.pix?.qrCode)) {
+        try {
+          const { forwardLowTrack } = await import("./lowtrack.server");
+          await forwardLowTrack("pix_gerado", { id: pay.id, amount: pay.amount, status: "waiting_payment" }, {
+            paymentMethod: "pix", product: { name: pay.offer?.name || PLANS[data.plan].name },
+            customer: { name: data.customer.name.trim(), email: data.customer.email.trim().toLowerCase(), phone: phoneToE164(data.customer.phone) },
+            ...(data.tracking.consent ? { ...data.utm, fbp: data.tracking.fbp, fbc: data.tracking.fbc } : {}),
+          });
+        } catch (error) {
+          console.error("lowtrack: pending delivery failed", { orderId: pay.id, reason: error instanceof Error ? error.message : "unknown" });
+        }
+      }
       return { ok: true as const, orderId: pay.id, refId: pay.refId, amount: Number(pay.amount), qrCode: pay.pix.qrCode, expiresAt: pay.pix.expirationDate, state: mapOrderStatus(pay.status) };
     } catch (e) {
       if (e instanceof CaktoError) {
