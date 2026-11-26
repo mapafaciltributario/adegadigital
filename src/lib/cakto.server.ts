@@ -51,7 +51,7 @@ export function createPixPayment(body: unknown, idempotencyKey: string) {
   });
 }
 
-export type CaktoOrder = { id: string; refId?: string; status: string; amount?: number | string | null; product?: { name?: string } | string };
+export type CaktoOrder = { id: string; refId?: string; status: string; amount?: number | string | null; paidAt?: string | null; product?: { name?: string } | string };
 export const getOrder = (id: string) => call<CaktoOrder>(`/orders/${encodeURIComponent(id)}/`);
 
 /** HMAC-SHA256 of "{timestamp}.{rawBody}" compared with X-Cakto-Signature "v1=<hex>" (Web Crypto, runs on Workers). */

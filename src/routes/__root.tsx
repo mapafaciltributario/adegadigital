@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -12,6 +13,9 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { setPurchaseSender, setServerSender, track, getTrackingContext } from "../lib/tracking";
+import { sendPurchaseEvent } from "../lib/checkout.functions";
+import { sendBrowserEvent } from "../lib/tracking.functions";
 
 function NotFoundComponent() {
   return (
@@ -73,6 +77,15 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
   );
 }
 
+// Registered at module load so child-route events on first render already reach the server.
+if (typeof window !== "undefined") {
+  setServerSender(({ name, eventId, plan }) => {
+    const t = getTrackingContext();
+    return sendBrowserEvent({ data: { name, eventId, sourceUrl: t.sourceUrl, ...(plan ? { plan } : {}), ...(t.fbp ? { fbp: t.fbp } : {}), ...(t.fbc ? { fbc: t.fbc } : {}) } });
+  });
+  setPurchaseSender((p) => sendPurchaseEvent({ data: p }));
+}
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     // Replace these placeholders with the app's name and description when first building the app.
@@ -95,7 +108,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=DM+Sans:wght@400;600;700&display=swap" },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
@@ -121,6 +133,9 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  // One PageView per route change (also the first load).
+  useEffect(() => { track("PageView"); }, [path]);
 
   return (
     <QueryClientProvider client={queryClient}>

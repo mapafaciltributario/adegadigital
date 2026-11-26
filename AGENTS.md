@@ -35,3 +35,12 @@ use the editor.
 
 ## Motion
 - Keep presentation motion scoped to `.motion-page` in the shared stylesheet and honor reduced-motion preferences; this keeps checkout and sales interactions consistent without changing payment logic.
+
+## Tracking
+- All marketing events go through `src/lib/tracking/` (browser) and `src/lib/meta-capi.server.ts` (server); pages call `track()` only. Why: one place owns event ids, consent and dedup.
+- Purchase is sent only after Cakto reports `paid` (re-checked server-side in `sendPurchaseEvent`), at Cakto's amount, from the approved screen once per tab, Pixel and CAPI with the same `purchase_{orderId}` id. Why: no fake purchases; repeats are deduplicated by Meta via the stable id.
+- Pixels load at idle time and run by default; a visitor who refuses in the footer "Privacidade e cookies" loads and sends nothing. Why: no floating banner on the sales page, opt-out instead of opt-in.
+- No database: Cakto is the only source of order status; the webhook only verifies and re-checks, with no side effects. Why: owner chose a stateless Vercel-friendly setup; add a store (e.g. Upstash Redis via Vercel Marketplace) only if a server-only Purchase from the webhook becomes necessary.
+- UTMs, src/sck and fbclid are captured on the first page into session storage (`src/lib/tracking/attribution.ts`) and read from there by checkout and fbc creation. Why: attribution survives navigation and late consent.
+- Visitor IP comes from `src/lib/request-ip.ts`, which reads Cloudflare and Vercel proxy headers. Why: the app must run on either host.
+- Fonts are self-hosted via @fontsource (latin subsets only). Why: no render-blocking third-party font requests.

@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { track as trackEvent } from "@/lib/tracking";
+import { PrivacyControl } from "@/components/PrivacyControl";
 import { useEffect, useRef, useState } from "react";
 import { Check, Clock, Gift, Lock, Mail, MessageCircle, Play, Pause, ShieldCheck, ShoppingCart, Sparkles, Star, Zap, ChevronDown, ChevronLeft, ChevronRight, CreditCard, X } from "lucide-react";
 
@@ -80,6 +82,7 @@ function Index() {
     els.forEach((e) => { e.classList.add("reveal"); io.observe(e); });
     return () => io.disconnect();
   }, []);
+  useEffect(() => { trackEvent("ViewContent", { plan: "completo", onceKey: "sales" }); }, []);
   useEffect(() => { const i = setInterval(() => setT((s) => (s > 0 ? s - 1 : 600)), 1000); return () => clearInterval(i); }, []);
   const mm = String(Math.floor(t / 60)).padStart(2, "0"), ss = String(t % 60).padStart(2, "0");
   const scroll = (d: number) => track.current?.scrollBy({ left: d * 260, behavior: "smooth" });
@@ -126,7 +129,7 @@ function Index() {
           <div ref={track} className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-4 [scrollbar-width:none]">
             {receitas.map(([f, n]) => (
               <figure data-reveal key={f} className="group relative w-60 shrink-0 snap-center overflow-hidden rounded-3xl shadow-soft">
-                <img src={`${A}/assets/${f}.jpg`} alt={n} className="aspect-[3/4] w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <img src={`${A}/assets/${f}.jpg`} alt={n} width={300} height={400} loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-foreground/90 to-transparent p-4 pt-12 font-display font-bold text-background">{n}</figcaption>
               </figure>
             ))}
@@ -146,7 +149,7 @@ function Index() {
         <div className="mt-8 grid gap-5">
           {bonus.map(([h, d, img], i) => (
             <div data-reveal key={h} className="flex items-center gap-4 rounded-3xl bg-card p-4 shadow-soft">
-              <img src={`${A}/__l5e/assets-v1/${img}`} alt={h} className="h-28 w-24 shrink-0 object-contain" />
+              <img src={`${A}/__l5e/assets-v1/${img}`} alt={h} width={96} height={112} loading="lazy" decoding="async" className="h-28 w-24 shrink-0 object-contain" />
               <div>
                 <span className="text-xs font-bold uppercase tracking-widest text-primary">Bônus {i + 1}</span>
                 <h3 className="font-display text-lg font-bold leading-tight">{h}</h3>
@@ -162,7 +165,7 @@ function Index() {
         <div className="mx-auto mt-10 max-w-md space-y-6">
           <div data-reveal className="relative rounded-[2rem] border-2 border-gold bg-card p-6 shadow-soft">
             <span className="absolute -top-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-gold px-4 py-1 text-xs font-bold uppercase tracking-wider text-foreground"><Star className="h-3.5 w-3.5 fill-current" /> Mais vendido</span>
-            <img src={MOCKUP} alt="Kit completo" className="mx-auto w-44" />
+            <img src={MOCKUP} alt="Kit completo" width={176} height={176} loading="lazy" decoding="async" className="mx-auto w-44" />
             <h3 className="mt-2 text-center font-display text-2xl font-extrabold">Kit Completo +180 Receitas</h3>
             <ul className="mt-5 grid gap-2 text-sm">
               {fullItems.map((x) => <li key={x} className="flex items-center gap-2"><Check className="h-4 w-4 shrink-0 text-cta" />{x}</li>)}
@@ -211,6 +214,7 @@ function Index() {
         <span className="inline-flex items-center gap-1.5"><Lock className="h-4 w-4" /> SSL seguro</span>
         <span className="inline-flex items-center gap-1.5"><CreditCard className="h-4 w-4" /> Pagamento protegido</span>
         <span className="inline-flex items-center gap-1.5"><Zap className="h-4 w-4" /> Acesso imediato</span>
+        <PrivacyControl />
       </footer>
 
       {modal && (

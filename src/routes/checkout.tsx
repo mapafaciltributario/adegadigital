@@ -5,7 +5,17 @@ import { Check, ChevronLeft, Gift, Copy, CreditCard, Loader2, Lock, QrCode, Shop
 import { PLAN_INCLUDES } from "@/lib/checkout-core";
 import { Button } from "@/components/ui/button";
 import { PLANS, customerSchema, formatBRL, isPlanId, maskDoc, maskPhone, type CustomerInput, type PlanId } from "@/lib/checkout-core";
-import { createPixCharge, getHostedCheckoutUrl, getPaymentStatus } from "@/lib/checkout.functions";
+import { createPixCharge, getHostedCheckoutUrl, getPaymentStatus, UTM_KEYS } from "@/lib/checkout.functions";
+import { getAttribution, getTrackingContext, track } from "@/lib/tracking";
+import { PrivacyControl } from "@/components/PrivacyControl";
+
+/** Attribution params captured at landing (any page), forwarded to the card checkout. */
+function getUtm() {
+  const a = getAttribution();
+  const out: Record<string, string> = {};
+  for (const k of UTM_KEYS) { const v = a[k]; if (v) out[k] = v; }
+  return out;
+}
 
 const MOCKUP = "https://adegadigital.lovable.app/__l5e/assets-v1/1694aa7b-dcbc-4edb-a1a3-6bcbc3b577dc/mockup-180-copao.png";
 
@@ -42,6 +52,11 @@ function getIdemKey(payload: string) {
   const k = crypto.randomUUID();
   sessionStorage.setItem("checkout-idem", JSON.stringify({ p: payload, k }));
   return k;
+}
+
+function trackingPayload() {
+  const t = getTrackingContext();
+  return { consent: t.consent, sourceUrl: t.sourceUrl, ...(t.fbp ? { fbp: t.fbp } : {}), ...(t.fbc ? { fbc: t.fbc } : {}) };
 }
 
 function Field({ id, label, error, ...p }: { id: keyof Form; label: string; error?: string | undefined } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -84,6 +99,7 @@ function Checkout() {
     window.addEventListener("online", on); window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
+  useEffect(() => { getUtm(); track("InitiateCheckout", { plan: plano, onceKey: plano }); }, [plano]);
   useEffect(() => { sessionStorage.setItem(FORM_KEY, JSON.stringify(form)); }, [form]);
 
   useEffect(() => {
@@ -116,14 +132,17 @@ function Checkout() {
     inflight.current = true; setBusy(true);
     try {
       if (method === "card") {
-        const r = await hostedFn({ data: { plan: plano } });
+        const r = await hostedFn({ data: { plan: plano, utm: getUtm() } });
         if (!r.url) { setError("Pagamento por cartão ainda não configurado."); return; }
+        track("AddPaymentInfo", { plan: plano });
         window.location.href = r.url;
         return;
       }
       const payload = JSON.stringify({ plano, ...parsed.data });
-      const r = await createPix({ data: { plan: plano, customer: parsed.data, bumps: [], idempotencyKey: getIdemKey(payload), fingerprint: getFingerprint() } });
+      const r = await createPix({ data: { plan: plano, customer: parsed.data, bumps: [], idempotencyKey: getIdemKey(payload), fingerprint: getFingerprint(), tracking: trackingPayload() } });
       if (!r.ok) { setError(r.error); return; }
+      sessionStorage.setItem("checkout-plan", plano);
+      track("AddPaymentInfo", { plan: plano, onceKey: r.orderId });
       setPix({ orderId: r.orderId, qrCode: r.qrCode, amount: r.amount, expiresAt: r.expiresAt });
       setState("pending");
     } catch {
@@ -221,6 +240,9 @@ function Checkout() {
           </form>
         )}
       </main>
+      <div className="pb-8 text-center">
+        <PrivacyControl />
+      </div>
     </div>
   );
 }
